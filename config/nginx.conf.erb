@@ -1,0 +1,56 @@
+daemon off;
+# Heroku dynos have at least 4 cores.
+worker_processes <%= ENV['NGINX_WORKERS'] || 4 %>;
+
+events {
+	use epoll;
+	accept_mutex on;
+	worker_connections 1024;
+}
+
+http {
+	gzip on;
+	gzip_comp_level 2;
+	gzip_min_length 512;
+
+	server_tokens off;
+
+	log_format l2met 'measure#nginx.service=$request_time request_id=$http_x_request_id';
+	access_log logs/nginx/access.log l2met;
+	error_log logs/nginx/error.log;
+
+	include mime.types;
+	default_type application/octet-stream;
+	sendfile on;
+
+	# Must read the body in 5 seconds.
+	client_body_timeout <%= ENV['NGINX_CLIENT_BODY_TIMEOUT'] || 5 %>;
+
+	server {
+		listen <%= ENV["PORT"] %>;
+		server_name _;
+		keepalive_timeout 5;
+		client_max_body_size <%= ENV['NGINX_CLIENT_MAX_BODY_SIZE'] || 1 %>M;
+
+		location / {
+			# Cannot use $scheme to test redirect as heroku routing
+			# sets it manually. More details: https://jaketrent.com/post/https-redirect-node-heroku/
+			if ($http_x_forwarded_proto = http) {
+				return 302 https://$http_host$request_uri;
+			}
+
+			# Cannot set header use $http_host because that will cause 
+			# an infinite routing loop due to how heroku routes internally.
+			# Instead, set communityhostname and grab that in the application
+			# Don't do this: proxy_set_header Host $http_host;
+			proxy_set_header communityhostname $http_host;
+
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+			proxy_redirect off;
+			proxy_set_header X-Forwarded-Proto $scheme;
+			proxy_ssl_server_name on;
+			proxy_ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+			proxy_pass https://pubpub-v4-dev.herokuapp.com;
+		}
+	}
+}
