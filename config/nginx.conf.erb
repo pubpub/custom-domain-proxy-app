@@ -50,6 +50,10 @@ http {
 			proxy_set_header X-Forwarded-Proto $scheme;
 			proxy_ssl_server_name on;
 			proxy_ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+			if ($http_host = hdsr.mitpress.mit.edu) {
+				proxy_pass https://pubpub-v6-prod.herokuapp.com;
+				break;
+			}
 			proxy_pass https://pubpub-v5-prod.herokuapp.com;
 		}
 	}
